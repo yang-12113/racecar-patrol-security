@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# ROS / build outputs
+build/
+install/
+log/
+
+# Data and runtime outputs
+*.db3
+*.bag
+*.bag.active
+*.log
+*.tmp
+*.swp
+
+# Models and heavy binaries
+*.onnx
+*.om
+*.so
+*.run
+*.7z
+*.zip
+*.tar
+*.tar.gz
+
+# Local project assets that stay on USB backup, not in Git
+captured_faces/
+models/
+face_db/
+camera_bag/
+camera_bag_1/
+
+# OS noise
+.DS_Store
+Thumbs.db
