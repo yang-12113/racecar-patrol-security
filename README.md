@@ -17,3 +17,7 @@ Recommended workflow:
 4. Sync tested code back to the car explicitly.
 
 This repository intentionally excludes large runtime assets and generated files so Git stays focused on source, configuration, and documentation.
+
+Code overview:
+
+- See `docs/codebase-overview.md` for the current architecture, runtime chain, and recommended workflow split between GitHub, the USB drive, and the car.
