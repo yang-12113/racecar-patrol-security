@@ -331,7 +331,10 @@ class FaceFollowController(Node):
             elif self.args.target_mode == "unknown":
                 if name != "unknown":
                     return None, STOP_TARGET_MODE_MISMATCH, fresh_age_ms
-                if face_state not in {"weak_unknown", "confirmed_unknown"}:
+                if (
+                    not self.args.allow_unknown_without_face_evidence
+                    and face_state not in {"weak_unknown", "confirmed_unknown"}
+                ):
                     return None, STOP_UNKNOWN_NO_FACE_EVIDENCE, fresh_age_ms
             elif self.args.target_mode == "any" and name == "none" and source != FALLBACK_LOCAL_SOURCE:
                 return None, STOP_TARGET_MODE_MISMATCH, fresh_age_ms
@@ -377,7 +380,10 @@ class FaceFollowController(Node):
             elif self.args.target_mode == "unknown":
                 if name != "unknown":
                     return None, STOP_TARGET_MODE_MISMATCH, fresh_age_ms
-                if face_state not in {"weak_unknown", "confirmed_unknown"}:
+                if (
+                    not self.args.allow_unknown_without_face_evidence
+                    and face_state not in {"weak_unknown", "confirmed_unknown"}
+                ):
                     return None, STOP_UNKNOWN_NO_FACE_EVIDENCE, fresh_age_ms
 
             width = max(1, int(payload.get("width", self.args.image_width)))
@@ -434,7 +440,10 @@ class FaceFollowController(Node):
         if self.args.target_mode == "unknown":
             if name != "unknown":
                 return None, STOP_TARGET_MODE_MISMATCH, fresh_age_ms
-            if not bool(control_target.get("has_recent_face_evidence", False)):
+            if (
+                not self.args.allow_unknown_without_face_evidence
+                and not bool(control_target.get("has_recent_face_evidence", False))
+            ):
                 return None, STOP_UNKNOWN_NO_FACE_EVIDENCE, fresh_age_ms
 
         state = {
@@ -662,6 +671,7 @@ def parse_args():
     ap.add_argument("--rate", type=float, default=10.0)
     ap.add_argument("--scan-timeout", type=float, default=0.8)
     ap.add_argument("--allow-stale-scan-motion", action="store_true")
+    ap.add_argument("--allow-unknown-without-face-evidence", action="store_true")
     ap.add_argument("--image-width", type=int, default=640)
     ap.add_argument("--image-height", type=int, default=720)
     ap.add_argument("--fresh-timeout-ms", type=int, default=220)

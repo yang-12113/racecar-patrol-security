@@ -241,12 +241,13 @@ case "$MODE" in
     )
     CTRL_EXTRA_ARGS+=(
       --allow-stale-scan-motion
-      --max-speed 1508
-      --speed-gain 16
-      --desired-area 0.24
-      --area-tol 0.06
-      --obstacle-slow-speed 1506
-      --obstacle-avoid-speed 1504
+      --allow-unknown-without-face-evidence
+      --max-speed 1524
+      --speed-gain 55
+      --desired-area 0.16
+      --area-tol 0.03
+      --obstacle-slow-speed 1518
+      --obstacle-avoid-speed 1514
       --turn-slow-down 4
     )
     CTRL_CMD_TOPIC="/car_cmd_vel"
