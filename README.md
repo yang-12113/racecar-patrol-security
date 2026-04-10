@@ -7,6 +7,8 @@ This repository is intended to be the code mainline for day-to-day work:
 - `face_tools/`: patrol, follow, alert, face, and helper scripts
 - `home/racecar/src/`: ROS2 workspace packages used on the car
 - `home/racecar/*.sh`: top-level on-car launch and utility scripts
+- `root/`: on-car YOLO, alarm, and auxiliary runtime scripts
+- `root/ros2_ws/src/alarm_pkg/`: root-owned ROS2 alarm package
 - `docs/`: handoff notes, logs, and recovery references
 
 Recommended workflow:

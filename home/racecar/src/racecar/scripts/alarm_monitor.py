@@ -17,7 +17,7 @@ class AlarmMonitor(Node):
         
         # 当前状态
         self.current_status = False
-        self.current_reason = 
+        self.current_reason = ""
         
         self.get_logger().info('报警监控器已启动')
 

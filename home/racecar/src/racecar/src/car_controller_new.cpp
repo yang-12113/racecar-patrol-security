@@ -62,6 +62,7 @@ along with hypha_racecar.  If not, see <http://www.gnu.org/licenses/>.
 #include "visualization_msgs/msg/marker.hpp"
 #include "std_msgs/msg/float64.hpp"
 #include "std_msgs/msg/string.hpp"
+#include <algorithm>
 #include <cmath>
 #define PI 3.14159265358979
 double last_steeringangle = 0;
@@ -141,6 +142,7 @@ L1Controller::L1Controller() : Node("art_car_controller")
   this->declare_parameter("Angle_gain_p", -1.0);
   this->declare_parameter("Angle_gain_d", -0.0);
   this->declare_parameter("baseSpeed", 0.0);
+  this->declare_parameter("Gas_gain", 50.0);
   this->declare_parameter("baseAngle", 90.0);
   this->declare_parameter("k_rou", 0.0);
   this->declare_parameter("vp_max_base", 0.0);
@@ -159,6 +161,7 @@ L1Controller::L1Controller() : Node("art_car_controller")
   this->get_parameter("Angle_gain_p", Angle_gain_p);
   this->get_parameter("Angle_gain_d", Angle_gain_d);
   this->get_parameter("baseSpeed", baseSpeed);
+  this->get_parameter("Gas_gain", Gas_gain);
   this->get_parameter("baseAngle", baseAngle);
   this->get_parameter("k_rou", k_rou);
   this->get_parameter("vp_max_base", vp_max_base);
@@ -325,33 +328,30 @@ void L1Controller::lineCB(const std_msgs::msg::Float64::SharedPtr lineMsg)
 void L1Controller::goalCB(const geometry_msgs::msg::PoseStamped::SharedPtr goalMsg)
 {
   geometry_msgs::msg::PoseStamped odom_goal;
-  goal_pos = *goalMsg;
+  geometry_msgs::msg::PoseStamped goal_msg = *goalMsg;
+  if (goal_msg.header.frame_id.empty())
+  {
+    goal_msg.header.frame_id = "map";
+    RCLCPP_WARN(this->get_logger(), "Received goal with empty frame_id, defaulting to map");
+  }
+  goal_pos = goal_msg;
   current_time = rclcpp::Clock().now();
-  RCLCPP_INFO(this->get_logger(), "Goal received and transformed to odom frame");
   try
   {
-    tf_buffer_->transform(*goalMsg, odom_goal, "odom", tf2::durationFromSec(1.0));
-
+    tf_buffer_->transform(goal_msg, odom_goal, "odom", tf2::durationFromSec(1.0));
     odom_goal_pos = odom_goal.pose.position;
-    // RCLCPP_INFO(this->get_logger(), "X pose: %.2f", odom_goal_pos.x);
-    // RCLCPP_INFO(this->get_logger(), "Y pose: %.2f", odom_goal_pos.y);
     goal_received = true;
     goal_reached = false;
-
-    //goal_circle.pose = odom_goal.pose;
-    // marker_pub->publish(goal_circle);
-    // RCLCPP_INFO(this->get_logger(), "Goal received and transformed to odom frame");
+    RCLCPP_INFO(this->get_logger(), "Goal received and transformed to odom frame");
   }
   catch (tf2::TransformException &ex)
   {
+    goal_received = false;
+    goal_reached = false;
     RCLCPP_ERROR(this->get_logger(), "%s", ex.what());
     RCLCPP_INFO(this->get_logger(),"goal error sleep");
-    // rclcpp::sleep_for(std::chrono::seconds(1));
+    return;
   }
-  // goal_received = true;
-  // goal_reached = false;
-  // RCLCPP_INFO(this->get_logger(), "X pose: %.2f", odom_goal_pos.x);
-  // RCLCPP_INFO(this->get_logger(), "Y pose: %.2f", odom_goal_pos.y);
 }
 
 double L1Controller::getYawFromPose(const geometry_msgs::msg::Pose &carPose)
@@ -517,6 +517,25 @@ double L1Controller::getL1Distance(const double &_Vcmd)
   return L1;
 }
 
+double L1Controller::getGasInput(const float &current_v)
+{
+  const double speed_mid_pwm = 1500.0;
+  const double target_v = std::max(0.0, Vcmd);
+  const double measured_v = std::fabs(static_cast<double>(current_v));
+  double pwm = speed_mid_pwm + baseSpeed + Gas_gain * (target_v - measured_v);
+
+  if (target_v <= 0.0)
+  {
+    return speed_mid_pwm;
+  }
+
+  if (!std::isfinite(pwm))
+  {
+    return speed_mid_pwm + baseSpeed;
+  }
+  return pwm;
+}
+
 double L1Controller::getSteeringAngle(double eta)
 {
   double car2goal_dist = getCar2GoalDist();
@@ -528,52 +547,53 @@ double L1Controller::getSteeringAngle(double eta)
   return steeringAngle;
 }
 
+
 void L1Controller::goalReachingCB()
 {
-  if (1)
+  if (!goal_received)
   {
-    try
-    {
-      geometry_msgs::msg::PoseStamped odom_goal;
-      current_time = rclcpp::Clock().now();
-      goal_pos.header.stamp = current_time;
-      tf_buffer_->transform(goal_pos, odom_goal, "odom", tf2::durationFromSec(2.0));
-      RCLCPP_INFO( this->get_logger(),"yes sleep");
-      odom_goal_pos = odom_goal.pose.position;
-      
-      // RCLCPP_INFO(this->get_logger(), "X pose: %.2f", odom_goal_pos.x);
-      // RCLCPP_INFO(this->get_logger(), "Y pose: %.2f", odom_goal_pos.y);
-    }
-    catch (tf2::TransformException &ex)
-    {
-      RCLCPP_ERROR(this->get_logger(), "%s", ex.what());
-      RCLCPP_INFO( this->get_logger(),"error sleep");
-      // // 获取当前时间的秒数和纳秒数
-      // auto sec = current_time.seconds();
-      // auto nsec = current_time.nanoseconds() ;
-      // // 减少2秒
-      // sec = sec-1;
-      // // 创建一个新的时间对象
-      // current_time = rclcpp::Time(sec, nsec);
-      //rclcpp::sleep_for(std::chrono::seconds(1));
-    }
-    double car2goal_dist = getCar2GoalDist();
-    if (car2goal_dist < goalRadius)
-    {
-      goal_reached = true;
-      goal_received = false;
-      cmd_vel.linear.x = 1500.0;
-      cmd_vel.angular.z = 90.0;
-      pub_->publish(cmd_vel);
-      pub_->publish(cmd_vel);
-      pub_->publish(cmd_vel);
-      RCLCPP_INFO(this->get_logger(), "Goal Reached! Stopping the vehicle.");
-    }
-    else
-    {
-      goal_reached = false;
-      // RCLCPP_INFO(this->get_logger(), "Current distance to goal: %.2f meters", car2goal_dist);
-    }
+    goal_reached = false;
+    return;
+  }
+
+  if (goal_pos.header.frame_id.empty())
+  {
+    goal_received = false;
+    goal_reached = false;
+    RCLCPP_WARN(this->get_logger(), "Goal frame_id is empty, skipping goal check");
+    return;
+  }
+
+  try
+  {
+    geometry_msgs::msg::PoseStamped odom_goal;
+    current_time = rclcpp::Clock().now();
+    goal_pos.header.stamp = current_time;
+    tf_buffer_->transform(goal_pos, odom_goal, "odom", tf2::durationFromSec(2.0));
+    odom_goal_pos = odom_goal.pose.position;
+  }
+  catch (tf2::TransformException &ex)
+  {
+    RCLCPP_ERROR(this->get_logger(), "%s", ex.what());
+    RCLCPP_INFO(this->get_logger(),"error sleep");
+    return;
+  }
+
+  double car2goal_dist = getCar2GoalDist();
+  if (car2goal_dist < goalRadius)
+  {
+    goal_reached = true;
+    goal_received = false;
+    cmd_vel.linear.x = 1500.0;
+    cmd_vel.angular.z = 90.0;
+    pub_->publish(cmd_vel);
+    pub_->publish(cmd_vel);
+    pub_->publish(cmd_vel);
+    RCLCPP_INFO(this->get_logger(), "Goal Reached! Stopping the vehicle.");
+  }
+  else
+  {
+    goal_reached = false;
   }
 }
 
@@ -595,94 +615,101 @@ double L1Controller::isline(double line_wight)
   return baseSpeed;
 }
 
+
 void L1Controller::controlLoopCB()
 {
   geometry_msgs::msg::Pose carPose = odom.pose.pose;
   geometry_msgs::msg::Twist carVel = odom.twist.twist;
   cmd_vel.linear.x = 1500.0;
   cmd_vel.angular.z = baseAngle;
-  // double encoder_speed = encoder.twist.twist.linear.x;
   static double speedlast;
   static double anglelast;
 
-  // if (goal_received)
-  // {
-    
-    double eta = getEta(carPose);
-    if (foundForwardPt)
+  if (!goal_received)
+  {
+    speedlast = cmd_vel.linear.x;
+    anglelast = cmd_vel.angular.z;
+    if (traffic_flag)
     {
-      if (!goal_reached)
+      pub_->publish(cmd_vel);
+    }
+    else
+    {
+      cmd_vel.linear.x = 1500;
+      cmd_vel.angular.z = 90;
+      pub_->publish(cmd_vel);
+    }
+    return;
+  }
+
+  double eta = getEta(carPose);
+  if (foundForwardPt)
+  {
+    if (!goal_reached)
+    {
+      if (stop_flag == 1.0 && stopIdx <= 0)
       {
-        if (stop_flag == 1.0 && stopIdx <= 0)
-        {
-          baseSpeed = slow_final * baseSpeed + 1500;
-          stopIdx++;
-          RCLCPP_WARN(this->get_logger(), "Final goal reached, slowing down. New base speed: %f", baseSpeed);
-        }
-        if (stop_flag == 2.0 && stopIdx <= 0)
-        {
-          baseSpeed = fast_final * baseSpeed + 1500;
-          stopIdx++;
-          RCLCPP_WARN(this->get_logger(), "Final goal reached, speeding up. New base speed: %f", baseSpeed);
-        }
-        if (stop_flag == 3.0 && stopIdx > 0)
-        {
-          baseSpeed = initbaseSpeed + 1500;
-          RCLCPP_WARN(this->get_logger(), "Recovering speed. New base speed: %f", baseSpeed);
-        }
-        
-        cmd_vel.linear.x = baseSpeed;
-        cmd_vel.angular.z = 90 - getSteeringAngle(eta) * Angle_gain_p - Angle_gain_d * (getSteeringAngle(eta) - last_steeringangle);
-        last_steeringangle = getSteeringAngle(eta);
+        baseSpeed = slow_final * initbaseSpeed;
+        stopIdx++;
+        RCLCPP_WARN(this->get_logger(), "Final goal reached, slowing down. New base speed: %f", baseSpeed);
+      }
+      if (stop_flag == 2.0 && stopIdx <= 0)
+      {
+        baseSpeed = fast_final * initbaseSpeed;
+        stopIdx++;
+        RCLCPP_WARN(this->get_logger(), "Final goal reached, speeding up. New base speed: %f", baseSpeed);
+      }
+      if (stop_flag == 3.0 && stopIdx > 0)
+      {
+        baseSpeed = initbaseSpeed;
+        stopIdx = 0;
+        RCLCPP_WARN(this->get_logger(), "Recovering speed. New base speed: %f", baseSpeed);
+      }
 
-        if (cmd_vel.linear.x < vp_min + 1500)
-        {
-          cmd_vel.linear.x = vp_min + 1500;
-          RCLCPP_WARN(this->get_logger(), "Commanded speed below minimum, setting to minimum: %f", cmd_vel.linear.x);
-        }
-        
-        if (mapPathNum <= 0)
-        {
-          RCLCPP_WARN(this->get_logger(), "No path available, setting speed to minimal cruising speed.");
-          cmd_vel.linear.x = 115;
-        }
-        
-        if (cmd_vel.linear.x > vp_max_base + 1500)
-        {
-          cmd_vel.linear.x = vp_max_base + 1500;
-          RCLCPP_WARN(this->get_logger(), "Commanded speed above maximum, setting to maximum: %f", cmd_vel.linear.x);
-        }
+      cmd_vel.linear.x = getGasInput(static_cast<float>(carVel.linear.x));
+      cmd_vel.angular.z = 90 - getSteeringAngle(eta) * Angle_gain_p - Angle_gain_d * (getSteeringAngle(eta) - last_steeringangle);
+      last_steeringangle = getSteeringAngle(eta);
 
-        if (cmd_vel.angular.z > 135)
-        {
-          cmd_vel.angular.z = 135;
-          RCLCPP_WARN(this->get_logger(), "Commanded angle above maximum, setting to maximum: %f", cmd_vel.angular.z);
-        }
-        else if (cmd_vel.angular.z < 45)
-        {
-          cmd_vel.angular.z = 45;
-          RCLCPP_WARN(this->get_logger(), "Commanded angle below minimum, setting to minimum: %f", cmd_vel.angular.z);
-        }
+      if (cmd_vel.linear.x < vp_min + 1500)
+      {
+        cmd_vel.linear.x = vp_min + 1500;
+        RCLCPP_WARN(this->get_logger(), "Commanded speed below minimum, setting to minimum: %f", cmd_vel.linear.x);
+      }
 
-        // RCLCPP_INFO(this->get_logger(), "Lfw = %.2f", Lfw);
-        // RCLCPP_INFO(this->get_logger(), "eta = %.2f", eta * 180 / PI);
-        // RCLCPP_INFO(this->get_logger(), "encoder_v = %.2f", encoder_speed);
-        // RCLCPP_INFO(this->get_logger(), "out_speed = %.2f", cmd_vel.linear.x);
-        // RCLCPP_INFO(this->get_logger(), "out_angle = %.2f", cmd_vel.angular.z);
-        // RCLCPP_INFO(this->get_logger(), "------------------------");
+      if (mapPathNum <= 0)
+      {
+        RCLCPP_WARN(this->get_logger(), "No path available, holding neutral speed.");
+        cmd_vel.linear.x = 1500.0;
+        cmd_vel.angular.z = 90.0;
+      }
+
+      if (cmd_vel.linear.x > vp_max_base + 1500)
+      {
+        cmd_vel.linear.x = vp_max_base + 1500;
+        RCLCPP_WARN(this->get_logger(), "Commanded speed above maximum, setting to maximum: %f", cmd_vel.linear.x);
+      }
+
+      if (cmd_vel.angular.z > 135)
+      {
+        cmd_vel.angular.z = 135;
+        RCLCPP_WARN(this->get_logger(), "Commanded angle above maximum, setting to maximum: %f", cmd_vel.angular.z);
+      }
+      else if (cmd_vel.angular.z < 45)
+      {
+        cmd_vel.angular.z = 45;
+        RCLCPP_WARN(this->get_logger(), "Commanded angle below minimum, setting to minimum: %f", cmd_vel.angular.z);
       }
     }
-  // }
-  // else
-  // {
-  //   cmd_vel.linear.x = 1500;
-  //   cmd_vel.angular.z = 90;
-  //   RCLCPP_WARN(this->get_logger(), "No goal received, setting default speed and angle.");
-  // }
-  
+  }
+  else
+  {
+    cmd_vel.linear.x = 1500.0;
+    cmd_vel.angular.z = 90.0;
+  }
+
   speedlast = cmd_vel.linear.x;
   anglelast = cmd_vel.angular.z;
-  
+
   if (traffic_flag)
   {
     pub_->publish(cmd_vel);
@@ -695,7 +722,6 @@ void L1Controller::controlLoopCB()
     pub_->publish(cmd_vel);
     RCLCPP_WARN(this->get_logger(), "Traffic flag is false, setting default speed and angle.");
   }
-  //rclcpp::sleep_for(std::chrono::seconds(1));
 }
 
 int main(int argc, char **argv)

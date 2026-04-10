@@ -36,6 +36,14 @@ This is the high-value application layer on top of the base car stack.
   - captures patrol waypoints for demo routes
 - `sync_face_assets_to_car.py`
   - sync helper for models, scripts, and face assets
+- `drive_arbiter.py`, `motion_arbiter.py`, `fallback_local_manager.py`
+  - arbitration and fallback helpers for follow and patrol motion
+- `pc_status_bridge.py`, `car_sender.py`
+  - PC-to-car status/control bridge helpers
+- `run_mapping_stack.sh`, `save_current_map.sh`, `start_rviz_now.sh`
+  - mapping and RViz bringup helpers
+- `input_chain_ab/`
+  - current mapping/control variant snapshots and switch metadata
 - `run_*.sh`
   - full-stack wrappers for follow demos, patrol demos, and navigation bringup
 
@@ -61,12 +69,33 @@ This is the base ROS2 package for the car.
 
 - `hipnuc_imu/`
   - IMU integration and launch helpers
+- `lslidar_driver/`, `lslidar_msgs/`
+  - lidar driver and message packages used by the car
+- `encoder/`, `encoder_imu/`, `odom_tf/`
+  - wheel encoder, IMU fusion, and odometry packages
+- `multi_goal_ros2/`
+  - multi-goal navigation helper package
+- `racecar_driver/`
+  - lower-level racecar driver package
+- `costmap_converter-ros2/`, `openslam_gmapping/`, `serial-foxy/`
+  - third-party or imported support packages kept with the workspace
 - `rf2o_laser_odometry/`
   - laser odometry package
 - `slam_gmapping/`
   - mapping package
 - `robot_navigation2/`
   - additional Nav2 bringup assets and params
+
+### `root/` Runtime Helpers
+
+- `yolo/`, `yolo_test/`, `yolo_test1/`
+  - Ascend/ACL YOLO runtime code and quick test helpers
+- top-level `alarm_*.py`, `alarm_*.sh`, `audio_alarm.py`, `obstacle_alarm.py`
+  - buzzer, light, audio, and alarm orchestration helpers
+- `yolo_v5_stream.py`, `run_yolo_v5_stream.sh`, `run_local_yolov5_stream.sh`
+  - local/streaming YOLO runtime entrypoints
+- `ros2_ws/src/alarm_pkg/`
+  - root-owned ROS2 alarm package used alongside the main car workspace
 
 ## Runtime Chain
 
@@ -137,6 +166,7 @@ The first import intentionally focuses on the code and docs most valuable for de
 - `face_tools/`
 - `home/racecar/`
 - `home/racecar/src/`
+- `root/`
 - `docs/`
 
 Large runtime assets and raw full-system backups remain outside Git by design.

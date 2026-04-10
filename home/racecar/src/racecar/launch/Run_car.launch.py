@@ -1,5 +1,5 @@
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, ExecuteProcess
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
 from launch.substitutions import LaunchConfiguration
@@ -58,12 +58,10 @@ def generate_launch_description():
             name='base_link2imu',
             arguments=['0.1653', '0.0', '0.0', '0.0', '0.0', '0.0', 'base_link', 'IMU_link']
         ),
-        Node(
-            package='encoder',
-            executable='encoder_node',
+        ExecuteProcess(
+            cmd=['/usr/bin/python3', '/home/racecar/src/encoder/encoder/encoder_node.py'],
             name='encoder_vel',
-            output='screen',
-
+            output='screen'
         ),
         Node(
             package='racecar_driver',

@@ -9,19 +9,18 @@ def run_cmd(cmd, check=True):
     return subprocess.run(cmd, check=check)
 
 
-def scp_to_car(local_path, remote_path):
-    run_cmd(
-        [
-            "scp",
-            "-o",
-            "StrictHostKeyChecking=no",
-            "-o",
-            "UserKnownHostsFile=NUL",
-            "-r",
-            str(local_path),
-            remote_path,
-        ]
-    )
+def scp_path(src, dst, recursive=False):
+    cmd = [
+        "scp",
+        "-o",
+        "StrictHostKeyChecking=no",
+        "-o",
+        "UserKnownHostsFile=NUL",
+    ]
+    if recursive:
+        cmd.append("-r")
+    cmd.extend([str(src), str(dst)])
+    run_cmd(cmd)
 
 
 def ssh_run(user, host, remote_cmd):
@@ -38,21 +37,26 @@ def ssh_run(user, host, remote_cmd):
     )
 
 
-def main():
-    ap = argparse.ArgumentParser(description="Upload face models, scripts and captured faces to the car.")
-    ap.add_argument("--host", default="192.168.5.100")
-    ap.add_argument("--user", default="root")
-    ap.add_argument("--local-root", default=str(Path(__file__).resolve().parent))
-    ap.add_argument("--remote-tools-dir", default="/root/face_tools")
-    ap.add_argument("--remote-model-dir", default="/root/face_models")
-    ap.add_argument("--remote-face-root", default="/root/face_db")
-    ap.add_argument("--person", default="", help="Optional single person name under captured_faces to upload")
-    ap.add_argument("--skip-db", action="store_true", help="Skip remote DB rebuild")
-    args = ap.parse_args()
+def resolve_models_dir(local_root):
+    candidates = [local_root / "models", local_root / "face_models"]
+    for path in candidates:
+        if path.exists():
+            return path
+    return candidates[0]
 
+
+def resolve_face_root(local_root):
+    candidates = [local_root / "captured_faces", local_root / "face_db" / "raw"]
+    for path in candidates:
+        if path.exists():
+            return path
+    return candidates[0]
+
+
+def push_to_car(args):
     local_root = Path(args.local_root)
-    models_dir = local_root / "models"
-    captured_root = local_root / "captured_faces"
+    models_dir = resolve_models_dir(local_root)
+    captured_root = resolve_face_root(local_root)
 
     tool_files = [
         local_root / "build_face_db.py",
@@ -64,6 +68,8 @@ def main():
         local_root / "run_intruder_follow_demo_full_stack.sh",
         local_root / "run_intruder_patrol_demo_full_stack.sh",
         local_root / "run_nav_stack_with_params.sh",
+        local_root / "run_mapping_stack.sh",
+        local_root / "save_current_map.sh",
         local_root / "run_navigation_test_full_stack.sh",
         local_root / "capture_face_on_car.py",
         local_root / "capture_patrol_waypoint.py",
@@ -96,10 +102,10 @@ def main():
     )
 
     for p in tool_files:
-        scp_to_car(p, f"{args.user}@{args.host}:{args.remote_tools_dir}/")
+        scp_path(p, f"{args.user}@{args.host}:{args.remote_tools_dir}/")
     for p in model_files:
-        scp_to_car(p, f"{args.user}@{args.host}:{args.remote_model_dir}/")
-    scp_to_car(face_source, f"{args.user}@{args.host}:{args.remote_face_root}/raw/")
+        scp_path(p, f"{args.user}@{args.host}:{args.remote_model_dir}/")
+    scp_path(face_source, f"{args.user}@{args.host}:{args.remote_face_root}/raw/", recursive=True)
 
     ssh_run(
         args.user,
@@ -112,6 +118,8 @@ def main():
                 f"chmod +x {args.remote_tools_dir}/run_intruder_follow_demo_full_stack.sh",
                 f"chmod +x {args.remote_tools_dir}/run_intruder_patrol_demo_full_stack.sh",
                 f"chmod +x {args.remote_tools_dir}/run_nav_stack_with_params.sh",
+                f"chmod +x {args.remote_tools_dir}/run_mapping_stack.sh",
+                f"chmod +x {args.remote_tools_dir}/save_current_map.sh",
                 f"chmod +x {args.remote_tools_dir}/run_navigation_test_full_stack.sh",
                 f"/usr/local/miniconda3/bin/python -m py_compile {args.remote_tools_dir}/build_face_db.py",
                 f"/usr/local/miniconda3/bin/python -m py_compile {args.remote_tools_dir}/yolo_face_track_alarm.py",
@@ -134,11 +142,50 @@ def main():
             f"--face-root {args.remote_face_root}/raw "
             f"--out {args.remote_face_root}/embeddings.npz "
             f"--det-model {args.remote_model_dir}/face_detection_yunet_2023mar.onnx "
-            f"--rec-model {args.remote_model_dir}/face_recognition_sface_2021dec.onnx"
+            f"--rec-model {args.remote_model_dir}/face_recognition_sface_2021dec.onnx "
+            f"--aggregate {args.rebuild_aggregate} "
+            f"--outlier-drop-ratio {args.outlier_drop_ratio} "
+            f"--topk {args.topk}"
         )
         ssh_run(args.user, args.host, rebuild_cmd)
 
-    print("[DONE] Sync complete.")
+
+def pull_from_car(args):
+    local_root = Path(args.local_root)
+    local_face_db = local_root / "face_db"
+    local_face_raw = local_face_db / "raw"
+    local_models = local_root / "face_models"
+    local_face_db.mkdir(parents=True, exist_ok=True)
+    local_face_raw.parent.mkdir(parents=True, exist_ok=True)
+    local_models.mkdir(parents=True, exist_ok=True)
+
+    scp_path(f"{args.user}@{args.host}:{args.remote_face_root}/raw", local_face_raw.parent, recursive=True)
+    scp_path(f"{args.user}@{args.host}:{args.remote_face_root}/embeddings.npz", local_face_db / "embeddings.npz")
+    scp_path(f"{args.user}@{args.host}:{args.remote_model_dir}", local_root, recursive=True)
+
+
+def main():
+    ap = argparse.ArgumentParser(description="Push/pull face assets and scripts between local machine and the car.")
+    ap.add_argument("--mode", choices=["push", "pull"], required=True)
+    ap.add_argument("--host", default="192.168.5.100")
+    ap.add_argument("--user", default="root")
+    ap.add_argument("--local-root", default=str(Path(__file__).resolve().parent))
+    ap.add_argument("--remote-tools-dir", default="/root/face_tools")
+    ap.add_argument("--remote-model-dir", default="/root/face_models")
+    ap.add_argument("--remote-face-root", default="/root/face_db")
+    ap.add_argument("--person", default="", help="Optional single person name to upload when mode=push")
+    ap.add_argument("--skip-db", action="store_true", help="Skip remote DB rebuild when mode=push")
+    ap.add_argument("--rebuild-aggregate", choices=["all", "all_pruned", "topk", "mean_pruned"], default="all_pruned")
+    ap.add_argument("--outlier-drop-ratio", type=float, default=0.15)
+    ap.add_argument("--topk", type=int, default=12)
+    args = ap.parse_args()
+
+    if args.mode == "push":
+        push_to_car(args)
+    else:
+        pull_from_car(args)
+
+    print(f"[DONE] Sync complete. mode={args.mode}")
 
 
 if __name__ == "__main__":

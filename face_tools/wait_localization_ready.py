@@ -68,6 +68,7 @@ def parse_args():
     ap.add_argument("--timeout", type=float, default=25.0)
     ap.add_argument("--check-interval", type=float, default=0.2)
     ap.add_argument("--pose-stale-timeout", type=float, default=2.0)
+    ap.add_argument("--require-amcl-pose", action="store_true")
     ap.add_argument("--republish-interval", type=float, default=6.0)
     ap.add_argument("--publish-script", default="/root/face_tools/publish_initial_pose.py")
     ap.add_argument("--publish-python", default="/usr/bin/python3")
@@ -122,7 +123,7 @@ def main():
     last_publish_ts = 0.0
     publish_attempts = 0
     last_publish_result = None
-    result = {"overall_ok": False, "transform": None, "amcl_pose": None, "publish_attempts": 0}
+    result = {"overall_ok": False, "transform": None, "amcl_pose": None, "publish_attempts": 0, "amcl_pose_optional": (not args.require_amcl_pose)}
 
     try:
         while time.time() < deadline:
@@ -142,10 +143,11 @@ def main():
             tf_result = node.is_transform_ready()
             pose_result = node.is_amcl_pose_ready()
             result = {
-                "overall_ok": bool(tf_result.get("ok")) and bool(pose_result.get("ok")),
+                "overall_ok": bool(tf_result.get("ok")) and (bool(pose_result.get("ok")) or (not args.require_amcl_pose)),
                 "transform": tf_result,
                 "amcl_pose": pose_result,
                 "publish_attempts": publish_attempts,
+                "amcl_pose_optional": (not args.require_amcl_pose),
                 "last_publish_result": last_publish_result,
             }
             if result["overall_ok"]:

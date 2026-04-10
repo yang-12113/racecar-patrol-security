@@ -12,6 +12,7 @@ from rclpy.action import ActionClient
 from rclpy.node import Node
 from sensor_msgs.msg import LaserScan
 from tf2_ros import Buffer, TransformException, TransformListener
+from rclpy.qos import qos_profile_sensor_data
 
 
 class PatrolPreflight(Node):
@@ -20,7 +21,7 @@ class PatrolPreflight(Node):
         self.args = args
         self.last_scan = None
         self.last_scan_ts = 0.0
-        self.create_subscription(LaserScan, args.scan_topic, self.on_scan, 10)
+        self.create_subscription(LaserScan, args.scan_topic, self.on_scan, qos_profile_sensor_data)
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
         self.nav_client = ActionClient(self, NavigateToPose, args.navigate_action)

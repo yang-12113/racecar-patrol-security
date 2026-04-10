@@ -16,6 +16,10 @@ log/
 *.log
 *.tmp
 *.swp
+*.swo
+*.avi
+*.backup
+*.backup_
 
 # Models and heavy binaries
 *.onnx
@@ -33,6 +37,11 @@ models/
 face_db/
 camera_bag/
 camera_bag_1/
+face_tools/.backup*/
+face_tools/codex_*/
+face_tools/pretest_backup*/
+face_tools/input_chain_ab/runs/
+root/yolo/kernel_meta_temp_*/
 
 # OS noise
 .DS_Store

@@ -20,7 +20,7 @@ class InitialPosePublisher(Node):
         super().__init__("publish_initial_pose_once")
         self.args = args
         qos = QoSProfile(depth=10)
-        qos.reliability = ReliabilityPolicy.BEST_EFFORT
+        qos.reliability = ReliabilityPolicy.RELIABLE
         qos.durability = DurabilityPolicy.VOLATILE
         self.pub = self.create_publisher(PoseWithCovarianceStamped, args.topic, qos)
 
